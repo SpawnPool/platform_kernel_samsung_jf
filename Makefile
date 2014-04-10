@@ -195,7 +195,7 @@ export KBUILD_BUILDHOST := $(SUBARCH)
 ARCH		?= arm
 CROSS_COMPILE	?= /opt/toolchains/arm-eabi-4.6/bin/arm-eabi-
 
-# Architecture as present in compile.h
+# Architecture as present in compilefnie.h
 UTS_MACHINE 	:= $(ARCH)
 SRCARCH 	:= $(ARCH)
 
@@ -246,7 +246,7 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 HOSTCC       = gcc
 HOSTCXX      = g++
 HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
-HOSTCXXFLAGS = -O2
+HOSTCXXFLAGS = -O3
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -352,11 +352,33 @@ CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-CFLAGS_MODULE   =
-AFLAGS_MODULE   =
-LDFLAGS_MODULE  =
-CFLAGS_KERNEL	=
-AFLAGS_KERNEL	=
+
+CUSTOM_FLAG	= -fgcse-sm -fsched-spec-load \
+		  -fforce-addr -ffast-math -fsingle-precision-constant \
+		  -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -ftree-vectorize  \
+		  -mvectorize-with-neon-quad -marm \
+		  -funroll-loops -mvectorize-with-neon-quad -pipe \
+		  -floop-interchange -ftree-loop-distribution -floop-strip-mine -floop-block \
+		  -munaligned-access
+
+ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
+CUSTOM_FLAG	+= -Os
+endif
+ifdef CONFIG_CC_OPTIMIZE_DEFAULT
+CUSTOM_FLAG	+= -O2
+endif
+ifdef CONFIG_CC_OPTIMIZE_ALOT
+CUSTOM_FLAG	+= -O3
+endif
+ifdef CONFIG_CC_OPTIMIZE_FAST
+CUSTOM_FLAG	+= -Ofast
+endif
+
+CFLAGS_MODULE   = -DMODULE -fno-pic $(CUSTOM_FLAG)
+AFLAGS_MODULE   = -DMODULE $(CUSTOM_FLAG)
+LDFLAGS_MODULE  = 
+CFLAGS_KERNEL	= $(CUSTOM_FLAG)
+AFLAGS_KERNEL	= $(CUSTOM_FLAG)
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
@@ -369,13 +391,14 @@ LINUXINCLUDE    := -I$(srctree)/arch/$(hdr-arch)/include \
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
-KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
-		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
-		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks
-KBUILD_AFLAGS_KERNEL :=
-KBUILD_CFLAGS_KERNEL :=
+KBUILD_CFLAGS := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -Wmaybe-uninitialized\
+	-fno-strict-aliasing -fno-common \
+	-Werror-implicit-function-declaration \
+	-Wno-format-security \
+	-fno-delete-null-pointer-checks $(CUSTOM_FLAG)
+
+KBUILD_AFLAGS_KERNEL := $(KBUILD_CFLAGS)
+KBUILD_CFLAGS_KERNEL := $(KBUILD_CFLAGS)
 KBUILD_AFLAGS   := -D__ASSEMBLY__
 KBUILD_AFLAGS_MODULE  := -DMODULE
 KBUILD_CFLAGS_MODULE  := -DMODULE
@@ -562,12 +585,6 @@ endif # $(dot-config)
 # This allow a user to issue only 'make' to build a kernel including modules
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
-
-ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
-else
-KBUILD_CFLAGS	+= -O2
-endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
